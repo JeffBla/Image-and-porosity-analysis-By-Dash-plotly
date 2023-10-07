@@ -1,0 +1,9 @@
+# env
+__pycache__
+
+# image
+assets/RockCT
+radiopaedia_org_covid-19-pneumonia-7_85703_0-dcm.nii
+
+# excel
+porosity.xlsx
