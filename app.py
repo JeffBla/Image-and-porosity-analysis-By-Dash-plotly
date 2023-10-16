@@ -18,23 +18,33 @@ import dash_bootstrap_components as dbc
 from dash_slicer import VolumeSlicer
 from dash.dependencies import Input, Output, State
 
+def npArrAppend(np_arr, target):
+    if np_arr is None:
+        np_arr = target[np.newaxis, :]
+    else:
+        np_arr = np.append(np_arr, target[np.newaxis, :], axis=0)
+
+    return np_arr
+
 app = dash.Dash(__name__, update_title=None)
 server = app.server
 
 # ------------- I/O and data massaging ---------------------------------------------------
-# ------------- Image  ---------------------------------------------------
-inDirname = "./assets/RockCT"
+# ------------- dicom Image  ---------------------------------------------------
+def DicomImage(inDirname = "./assets/RockCT") -> np.array:
 
-reader = vtkDICOMImageReader()
-reader.SetDirectoryName(inDirname)
-reader.Update()
+    reader = vtkDICOMImageReader()
+    reader.SetDirectoryName(inDirname)
+    reader.Update()
 
-files = os.listdir(inDirname)
+    files = os.listdir(inDirname)
 
-dcmImage_CT = np.array(reader.GetOutput().GetPointData().GetScalars()).reshape(
-    len(files), reader.GetHeight(), reader.GetWidth())
+    dcmImage_CT = np.array(reader.GetOutput().GetPointData().GetScalars()).reshape(
+        len(files), reader.GetHeight(), reader.GetWidth())
 
-Hu = dcmImage_CT
+    return dcmImage_CT
+
+Hu = DicomImage()
 
 slicer = VolumeSlicer(app, Hu)
 slicer.graph.figure.update_layout(
@@ -49,6 +59,53 @@ slider = dcc.Slider(id="slider", max=slicer.nslices)
 # Create a store with a specific ID so we can set the slicer position.
 setpos_store = dcc.Store(
     id={"context": "app", "scene": slicer.scene_id, "name": "setpos"}
+)
+
+# ------------- Percent Image  ---------------------------------------------------
+def PercentImage( inDirname_image_np = './assets/image_np/',
+                 inDirname_percent_np = './assets/percent_np/')->(np.array, np.array, np.array):
+    AIR = -1024
+
+    imgs_np = None
+    solids_np = None
+    CTs_np = None
+
+    files = os.listdir(inDirname_image_np)
+
+    # read img
+    for i in range(len(files)):
+        hovertemplate = "x: %{x} <br> y: %{y} <br> z: %{z} <br> ct: %{customdata[0]:.4f} <br> percent: %{customdata[1]:.4f},  %{customdata[2]:.4f}, %{customdata[3]:.4f}"
+        
+        img = np.load(inDirname_image_np+f'img_{i}.npy')
+        img = img.reshape(img.shape[-2], img.shape[-1])
+
+        ct = ((img + 1) / 2.0) * (3000 - AIR) + AIR
+
+        percent = np.load(inDirname_percent_np+f'percent_{i}.npy').reshape(
+            3, img.shape[-2], img.shape[-1])
+        
+        imgs_np = npArrAppend(imgs_np, img)
+        solids_np = npArrAppend(solids_np, percent[0])
+        CTs_np = npArrAppend(CTs_np, ct)
+
+    return imgs_np, solids_np, CTs_np
+
+imgs_np, solids_np, CTs_np = PercentImage()
+
+
+slicer_percent = VolumeSlicer(app, solids_np*1000)
+slicer_percent.graph.figure.update_layout(
+    dragmode="drawrect", newshape_line_color="cyan", plot_bgcolor="rgb(0, 0, 0)"
+)
+slicer_percent.graph.config.update(
+    modeBarButtonsToAdd=["drawrect", "eraseshape"]
+)
+
+slider_percent = dcc.Slider(id="slider", max=slicer_percent.nslices)
+
+# Create a store with a specific ID so we can set the slicer position.
+setpos_store_percent = dcc.Store(
+    id={"context": "app", "scene": slicer_percent.scene_id, "name": "setpos_percent"}
 )
 
 # ------------- Porosity  ---------------------------------------------------
@@ -71,7 +128,6 @@ axial_card = dbc.Card(
                 html.H6(
                     [
                         "Use upper right toolbox to manipulate these images. Also, move the slider at the bottom to browse the image. ",
-                        html.Br()                        
                     ]
                 ),
                 dbc.Tooltip(
@@ -80,6 +136,28 @@ axial_card = dbc.Card(
                 ),
             ]
         ),
+        
+    ]
+)
+
+percent_info_card = dbc.Card(
+    [
+        dbc.CardHeader("Percentage AI give"),
+        dbc.CardBody([html.Big("BVH3_15"), html.Br(),slicer_percent.graph, slicer_percent.slider,setpos_store_percent, *slicer_percent.stores]),
+        dbc.CardFooter(
+            [
+                html.H6(
+                    [
+                        "Use upper right toolbox to manipulate these images. Also, move the slider at the bottom to browse the image. ",
+                    ]
+                ),
+                dbc.Tooltip(
+                    "Use the slider to scroll vertically through the image and look for the ground glass occlusions.",
+                    target="tooltip-target-1",
+                ),
+            ]
+        ),
+        
     ]
 )
 
@@ -113,19 +191,18 @@ line_card = dbc.Card(
                 dbc.Toast(
                     [
                         html.P(
-                            "Before you can select value ranges in this histogram, you need to define a region"
-                            " of interest in the slicer views above (step 1 and 2)!",
+                            "Click the point on the line. You can get the correspond"
+                            " image.",
                             className="mb-0",
                         )
                     ],
                     id="roi-warning",
-                    header="Please select a volume of interest first",
+                    header="You can check the point on the line",
                     icon="danger",
                     is_open=True,
                     dismissable=False,
                 ),
-                "Step 3: Select a range of values to segment the occlusion. Hover on slices to find the typical "
-                "values of the occlusion.",
+                "Click the point on the line",
             ]
         ),
     ]
@@ -135,7 +212,8 @@ app.layout = html.Div(
     [
         dbc.Container(
             [
-                dbc.Row([dbc.Col(axial_card)]),
+                dbc.Row([dbc.Col(axial_card), dbc.Col(percent_info_card)]),
+                dbc.Row([html.Hr()]),
                 dbc.Row([dbc.Col(line_card)]),
             ],
             fluid=True,
@@ -166,6 +244,7 @@ def update_output(value):
 
 @app.callback(
     Output(setpos_store.id, 'data'),
+    Output(setpos_store_percent, 'data'),
     Input('graph-line', 'clickData'))
 def Click_changeImage(clickData):
     if clickData != None:
