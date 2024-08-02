@@ -18,7 +18,6 @@ import dash_core_components as dcc
 from dash.dependencies import Input, Output
 import imageio
 
-
 app = dash.Dash(__name__, update_title=None)
 
 # ------------- I/O and data massaging ---------------------------------------------------
@@ -34,15 +33,17 @@ files = os.listdir(inDirname)
 dcmImage_CT = np.array(reader.GetOutput().GetPointData().GetScalars()).reshape(
     len(files), reader.GetHeight(), reader.GetWidth())
 
-Hu = dcmImage_CT[:500]
+Hu = dcmImage_CT[:]
 
 slicer0 = VolumeSlicer(app, Hu, axis=0, scene_id="brain")
 slicer1 = VolumeSlicer(app, Hu, axis=1, scene_id="brain")
 slicer2 = VolumeSlicer(app, Hu, axis=2, scene_id="brain")
 
-setpos_store = dcc.Store(
-    id={"context": "app", "scene": slicer0.scene_id, "name": "setpos"}
-)
+setpos_store = dcc.Store(id={
+    "context": "app",
+    "scene": slicer0.scene_id,
+    "name": "setpos"
+})
 
 # Here we create an auxiliary slider for each slicer and encapsulate it inside a Div
 # to be added to the app layout
@@ -50,18 +51,15 @@ slicer_list = [setpos_store]
 for sidx, slicer in enumerate([slicer0, slicer1, slicer2]):
     slider = dcc.Slider(id=f"slider-{sidx}", max=slicer.nslices)
     slicer_list.append(
-        html.Div(
-            [
-                html.Pre("slicer graph"),
-                slicer.graph,
-                html.Pre("builtin slider"),
-                slicer.slider,
-                html.Pre("auxiliary slider"),
-                slider,
-                *slicer.stores,
-            ]
-        )
-    )
+        html.Div([
+            html.Pre("slicer graph"),
+            slicer.graph,
+            html.Pre("builtin slider"),
+            slicer.slider,
+            html.Pre("auxiliary slider"),
+            slider,
+            *slicer.stores,
+        ]))
 
 # Create a small CSS grid with Input fields and text labels to both display
 # the slicer axis positions and allow the user to interactively change them
@@ -76,7 +74,10 @@ nav_table = html.Div(
         html.Div("Z axis"),
         dcc.Input(id="z-nav", type="number", placeholder="Z value"),
     ],
-    style={"display": "grid", "gridTemplateColumns": "10% 10%"},
+    style={
+        "display": "grid",
+        "gridTemplateColumns": "10% 10%"
+    },
 )
 slicer_list.append(nav_table)
 
@@ -109,7 +110,11 @@ def write_to_auxiliary_slider(x_slider, y_slider, z_slider):
 
 # Write the values of the axiliary slider to the input fields in the navigation table
 @app.callback(
-    [Output("x-nav", "value"), Output("y-nav", "value"), Output("z-nav", "value")],
+    [
+        Output("x-nav", "value"),
+        Output("y-nav", "value"),
+        Output("z-nav", "value")
+    ],
     [
         Input("slider-0", "value"),
         Input("slider-1", "value"),
